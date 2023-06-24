@@ -4,7 +4,7 @@ RUN conda install psycopg2=2.9.3
 
 COPY requirements.txt .
 
-RUN pip install -f requirements.txt
+RUN pip install -r requirements.txt
 
 WORKDIR /src/app
 

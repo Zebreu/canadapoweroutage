@@ -113,7 +113,10 @@ def map_neighborhood(_cursor, center = (45.446892,-75.790369), last_outage_time 
     
     _cursor.connection.commit()    
     polygons = _cursor.fetchall()[0][0]
-    
+    print(polygons)
+    if polygons['features'] is None:    
+        st.write('No outage happened around this area since April 2023')
+        return
     whatever = pd.DataFrame()
     whatever['outage'] = [p['properties']['outage'] for p in polygons['features']]
     whatever['item'] = [p['properties']['item'] for p in polygons['features']]
@@ -195,13 +198,10 @@ def get_point(modified_address):
         address = geolocator.geocode(modified_address)
         st.write(f'{address.address}, {address.latitude}, {address.longitude}')
         point = (address.longitude, address.latitude)
+        return point[0], point[1]
     except:
-        st.write("Sorry, we can't find you, please fill out the next form")
-        location = st.text_input('Write latitude and longitude separated by a comma', '45.3932, -75.8236')
-        lat, lon = location.split(',')
-        point = (float(lon),float(lat))
-    
-    return point[0], point[1]
+        st.write("Sorry, we can't find you, please fill out the GPS field")
+        return None, None
 
 @st.cache_data(ttl=3600)
 def draw_timeline(hits):
@@ -274,18 +274,32 @@ def selection_map(center):
 def main():
     cursor = create_connection('same')
     cursor.connection.commit()
-
-    raw_address = st.text_input('Address:', "41 Avenue Saint-Just, Montreal")
-    modified_address = raw_address + ', Quebec, Canada'
-    (x,y) = get_point(modified_address)
     
+    st.write('Please enter your address or your GPS coordinates then press Enter.')
+    coladdress, colgps = st.columns(2)
+    with coladdress:
+        raw_address = st.text_input('Address:', "41 Avenue Saint-Just, Montreal")
+    with colgps:
+        input_location = st.text_input('Latitude and longitude separated by a comma:', '45.5175, -73.6084')
+    
+    use_gps = st.checkbox('Use GPS coordinates')
+
+    if use_gps:
+        lat, lon = input_location.split(',')
+        (x,y) = (float(lon),float(lat))
+    else:
+        modified_address = raw_address + ', Quebec, Canada'
+        (x,y) = get_point(modified_address)
+
+    if x is None:
+        return
     #round_timestamp = pd.Timestamp.now().round('30min').timestamp()
     hits = get_outage_polygons(cursor, x, y)
      
     if hits:
         new_frames = draw_timeline(hits)
     else:
-        st.write('Looking good, no outage for you!')
+        st.write('Looking good, there was no outage there since April 2023!')
 
     if "center" not in st.session_state:
         st.session_state["center"] = [y,x]
@@ -295,6 +309,8 @@ def main():
     original_center = (y,x)
     
     cumulative_map = st.checkbox('Show cumulative heatmap')
+    if not cumulative_map:
+        st.session_state["center"] = [y,x]
     if cumulative_map:
         heatmap_center = st.session_state['center']
         col1, col2 = st.columns([0.3,0.7])
